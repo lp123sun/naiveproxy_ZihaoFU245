@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/memory/raw_ptr.h"
 #include "base/types/expected.h"
@@ -42,7 +43,9 @@ class NET_EXPORT_PRIVATE QuicProxyClientSocket : public ProxyClientSocket {
       const HostPortPair& endpoint,
       const NetLogWithSource& net_log,
       scoped_refptr<HttpAuthController> auth_controller,
-      ProxyDelegate* proxy_delegate);
+      ProxyDelegate* proxy_delegate,
+      bool is_udp_tunnel = false,
+      std::string_view udp_tunnel_uri_template = {});
 
   QuicProxyClientSocket(const QuicProxyClientSocket&) = delete;
   QuicProxyClientSocket& operator=(const QuicProxyClientSocket&) = delete;
@@ -154,6 +157,7 @@ class NET_EXPORT_PRIVATE QuicProxyClientSocket : public ProxyClientSocket {
   // The hostname and port of the endpoint.  This is not necessarily the one
   // specified by the URL, due to Alternate-Protocol or fixed testing ports.
   const HostPortPair endpoint_;
+  const bool is_udp_tunnel_;
   scoped_refptr<HttpAuthController> auth_;
 
   const ProxyChain proxy_chain_;

@@ -25,7 +25,7 @@ namespace net {
 NaiveProxyDelegate::NaiveProxyDelegate(
     const HttpRequestHeaders& extra_headers,
     const std::vector<PaddingType>& supported_padding_types)
-    : extra_headers_(extra_headers) {
+    : extra_headers_(extra_headers), udp_extra_headers_(extra_headers) {
   InitializeNonindexCodes();
 
   std::vector<std::string_view> padding_type_strs;
@@ -42,6 +42,7 @@ base::expected<HttpRequestHeaders, Error>
 NaiveProxyDelegate::OnBeforeTunnelRequest(
     const ProxyChain& proxy_chain,
     size_t chain_index,
+    ProxyTunnelType tunnel_type,
     OnBeforeTunnelRequestCallback callback) {
   HttpRequestHeaders extra_headers;
   // Not possible to negotiate padding capability given the underlying
@@ -58,6 +59,12 @@ NaiveProxyDelegate::OnBeforeTunnelRequest(
   // because proxy chaining will corrupt the padding.
   if (chain_index != proxy_chain.length() - 1) {
     return extra_headers;
+  }
+
+  if (tunnel_type == ProxyTunnelType::kConnectUdp) {
+    // CONNECT-UDP capsules are not Naive padded. Keep only user-supplied
+    // headers and share the underlying HTTP/2 or HTTP/3 transport.
+    return udp_extra_headers_;
   }
 
   // Sends client-side padding header regardless of server support
@@ -141,6 +148,7 @@ std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
 Error NaiveProxyDelegate::OnTunnelHeadersReceived(
     const ProxyChain& proxy_chain,
     size_t chain_index,
+    ProxyTunnelType tunnel_type,
     const HttpResponseHeaders& response_headers,
     CompletionOnceCallback callback) {
   // Not possible to negotiate padding capability given the underlying
@@ -156,6 +164,11 @@ Error NaiveProxyDelegate::OnTunnelHeadersReceived(
   // Only the last server is attempted for padding
   // because proxy chaining will corrupt the padding.
   if (chain_index != proxy_chain.length() - 1) {
+    return OK;
+  }
+
+  // CONNECT-UDP response headers do not negotiate Naive stream padding.
+  if (tunnel_type == ProxyTunnelType::kConnectUdp) {
     return OK;
   }
 

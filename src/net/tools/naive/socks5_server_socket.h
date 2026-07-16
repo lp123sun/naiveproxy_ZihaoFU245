@@ -9,8 +9,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/completion_repeating_callback.h"
@@ -30,10 +32,18 @@ struct NetworkTrafficAnnotationTag;
 // Currently no SOCKSv5 authentication is supported.
 class Socks5ServerSocket : public StreamSocket {
  public:
+  enum class Command {
+    kConnect,
+    kBind,
+    kUdpAssociate,
+  };
+
   Socks5ServerSocket(std::unique_ptr<StreamSocket> transport_socket,
                      const std::string& user,
                      const std::string& pass,
-                     const NetworkTrafficAnnotationTag& traffic_annotation);
+                     const NetworkTrafficAnnotationTag& traffic_annotation,
+                     base::OnceCallback<int(Socks5ServerSocket*, IPEndPoint*)>
+                         udp_associate_callback = {});
 
   // On destruction Disconnect() is called.
   ~Socks5ServerSocket() override;
@@ -42,6 +52,7 @@ class Socks5ServerSocket : public StreamSocket {
   Socks5ServerSocket& operator=(const Socks5ServerSocket&) = delete;
 
   const HostPortPair& request_endpoint() const;
+  Command command() const { return command_; }
 
   // StreamSocket implementation.
 
@@ -152,6 +163,10 @@ class Socks5ServerSocket : public StreamSocket {
   uint8_t auth_method_;
   uint8_t auth_status_;
   uint8_t reply_;
+  Command command_;
+  std::optional<IPEndPoint> udp_associate_response_endpoint_;
+  base::OnceCallback<int(Socks5ServerSocket*, IPEndPoint*)>
+      udp_associate_callback_;
 
   HostPortPair request_endpoint_;
 

@@ -421,6 +421,24 @@ int main(int argc, char* argv[]) {
                  "--tunnel-timeout=<SECONDS> Rotate tunnels after timeout\n"
                  "--idle-timeout=<SECONDS>   Close idle streams after timeout\n"
                  "--extra-headers=...        Extra headers split by CRLF\n"
+                 "--masque-udp=<true|false>  Enable SOCKS5 UDP ASSOCIATE via "
+                 "CONNECT-UDP\n"
+                 "--masque-udp-path-template=<PATH_TEMPLATE>\n"
+                 "                           CONNECT-UDP path template\n"
+                 "--connect-udp-timeout=<SECONDS>\n"
+                 "                           CONNECT-UDP flow idle timeout (120)\n"
+                 "--socks-udp-association-timeout=<SECONDS>\n"
+                 "                           SOCKS5 UDP association timeout (300)\n"
+                 "--udp-max-target-flows=<N> Upstream target streams (128)\n"
+                 "--udp-max-queued-datagrams-per-flow=<N>\n"
+                 "                           Per-target queued datagrams (16)\n"
+                 "--udp-max-queued-bytes-per-flow=<N>\n"
+                 "                           Per-target queued bytes (262144)\n"
+                 "--udp-max-queued-sends=<N> Local queued responses (64)\n"
+                 "--udp-max-queued-send-bytes=<N>\n"
+                 "                           Local queued bytes (1048576)\n"
+                 "                           Full queues discard oldest; zero\n"
+                 "                           disables the corresponding limit\n"
                  "--host-resolver-rules=...  Resolver rules\n"
                  "--resolver-range=...       Redirect resolver range\n"
                  "--log[=<path>]             Log to stderr, or file\n"
@@ -544,7 +562,10 @@ int main(int argc, char* argv[]) {
     auto naive_proxy = std::make_unique<net::NaiveProxy>(
         std::move(listen_socket), listen_config.protocol, listen_config.user,
         listen_config.pass, config.insecure_concurrency, config.tunnel_timeout,
-        config.idle_timeout, resolver.get(), session, kTrafficAnnotation,
+        config.idle_timeout, resolver.get(), session, config.masque_udp,
+        config.masque_udp_path_template, config.connect_udp_timeout,
+        config.socks_udp_association_timeout, config.udp_limits,
+        kTrafficAnnotation,
         std::vector<net::PaddingType>{net::PaddingType::kVariant1,
                                       net::PaddingType::kNone});
     naive_proxies.push_back(std::move(naive_proxy));
