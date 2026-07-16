@@ -21,6 +21,7 @@
 #include "net/base/proxy_chain.h"
 #include "net/http/http_request_headers.h"
 #include "net/tools/naive/naive_protocol.h"
+#include "net/tools/naive/naive_udp_association.h"
 #include "url/scheme_host_port.h"
 
 namespace net {
@@ -52,6 +53,12 @@ struct NaiveConfig {
 #endif
 
   HttpRequestHeaders extra_headers;
+
+  bool masque_udp = false;
+  std::string masque_udp_path_template;
+  int connect_udp_timeout = 120;
+  int socks_udp_association_timeout = 300;
+  NaiveUdpAssociationLimits udp_limits;
 
   // The last server is assumed to be Naive.
   std::vector<ProxyChain> proxy_chains;

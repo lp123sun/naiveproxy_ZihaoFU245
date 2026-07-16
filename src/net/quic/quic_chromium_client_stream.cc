@@ -275,6 +275,8 @@ int QuicChromiumClientStream::Handle::WriteStreamData(
   ScopedBoolSaver saver(&may_invoke_callbacks_, false);
   if (!stream_)
     return net_error_;
+  if (stream_->write_side_closed())
+    return ERR_CONNECTION_CLOSED;
 
   if (stream_->WriteStreamData(data, fin)) {
     return HandleIOComplete(OK);
@@ -292,6 +294,8 @@ int QuicChromiumClientStream::Handle::WritevStreamData(
   ScopedBoolSaver saver(&may_invoke_callbacks_, false);
   if (!stream_)
     return net_error_;
+  if (stream_->write_side_closed())
+    return ERR_CONNECTION_CLOSED;
 
   if (stream_->WritevStreamData(buffers, lengths, fin))
     return HandleIOComplete(OK);
@@ -877,6 +881,12 @@ int QuicChromiumClientStream::DeliverInitialHeaders(
       });
 
   *headers = std::move(initial_headers_);
+  // Body data can arrive before the owner consumes the response headers. In
+  // that case OnBodyAvailable() intentionally leaves it buffered while
+  // |headers_delivered_| is false, so consuming the headers must create the
+  // body notification that was suppressed earlier.
+  if (HasBytesToRead())
+    NotifyHandleOfDataAvailableLater();
   return initial_headers_frame_len_;
 }
 

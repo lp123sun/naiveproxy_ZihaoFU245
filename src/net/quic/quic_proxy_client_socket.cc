@@ -17,6 +17,7 @@
 #include "net/base/net_errors.h"
 #include "net/base/proxy_chain.h"
 #include "net/base/proxy_delegate.h"
+#include "net/http/connect_udp_helper.h"
 #include "net/http/http_auth_controller.h"
 #include "net/http/http_log_util.h"
 #include "net/http/http_response_headers.h"
@@ -25,6 +26,7 @@
 #include "net/quic/quic_http_utils.h"
 #include "net/spdy/spdy_http_utils.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "url/gurl.h"
 
 namespace net {
 
@@ -37,10 +39,13 @@ QuicProxyClientSocket::QuicProxyClientSocket(
     const HostPortPair& endpoint,
     const NetLogWithSource& net_log,
     scoped_refptr<HttpAuthController> auth_controller,
-    ProxyDelegate* proxy_delegate)
+    ProxyDelegate* proxy_delegate,
+    bool is_udp_tunnel,
+    std::string_view udp_tunnel_uri_template)
     : stream_(std::move(stream)),
       session_(std::move(session)),
       endpoint_(endpoint),
+      is_udp_tunnel_(is_udp_tunnel),
       auth_(std::move(auth_controller)),
       proxy_chain_(proxy_chain),
       proxy_chain_index_(proxy_chain_index),
@@ -53,6 +58,13 @@ QuicProxyClientSocket::QuicProxyClientSocket(
 
   request_.method = "CONNECT";
   request_.url = GURL("https://" + endpoint.ToString());
+  if (is_udp_tunnel_) {
+    CHECK(!proxy_chain.is_direct());
+    CHECK_EQ(proxy_chain_index, proxy_chain.length() - 1);
+    request_.url = BuildConnectUdpUrl(proxy_chain, proxy_chain_index, endpoint,
+                                      udp_tunnel_uri_template);
+    request_.extra_headers.SetHeader("capsule-protocol", "?1");
+  }
   if (endpoint.host() == "preamble") {
     preamble_index_ = endpoint.port();
     CHECK(!proxy_chain.is_direct());
@@ -196,19 +208,26 @@ int QuicProxyClientSocket::Read(IOBuffer* buf,
   if (rv == ERR_IO_PENDING) {
     read_callback_ = std::move(callback);
     read_buf_ = buf;
-  } else if (rv == 0) {
-    net_log_.AddByteTransferEvent(NetLogEventType::SOCKET_BYTES_RECEIVED, 0,
-                                  nullptr);
-  } else if (rv > 0) {
-    net_log_.AddByteTransferEvent(NetLogEventType::SOCKET_BYTES_RECEIVED, rv,
-                                  buf->data());
+  } else {
+    if (rv >= 0 && stream_->IsDoneReading())
+      stream_->OnFinRead();
+    if (rv == 0) {
+      net_log_.AddByteTransferEvent(NetLogEventType::SOCKET_BYTES_RECEIVED, 0,
+                                    nullptr);
+    } else if (rv > 0) {
+      net_log_.AddByteTransferEvent(NetLogEventType::SOCKET_BYTES_RECEIVED, rv,
+                                    buf->data());
+    }
   }
   return rv;
 }
 
 void QuicProxyClientSocket::OnReadComplete(int rv) {
-  if (!stream_->IsOpen())
+  if (!stream_->IsOpen()) {
     rv = 0;
+  } else if (rv >= 0 && stream_->IsDoneReading()) {
+    stream_->OnFinRead();
+  }
 
   if (!read_callback_.is_null()) {
     DCHECK(read_buf_);
@@ -231,7 +250,6 @@ int QuicProxyClientSocket::Write(
 
   if (next_state_ != STATE_CONNECT_COMPLETE)
     return ERR_SOCKET_NOT_CONNECTED;
-
   net_log_.AddByteTransferEvent(NetLogEventType::SOCKET_BYTES_SENT, buf_len,
                                 buf->data());
 
@@ -395,6 +413,8 @@ int QuicProxyClientSocket::DoCalculateHeaders() {
         proxy_delegate_headers_,
         proxy_delegate_->OnBeforeTunnelRequest(
             proxy_chain_, proxy_chain_index_,
+            is_udp_tunnel_ ? ProxyTunnelType::kConnectUdp
+                           : ProxyTunnelType::kConnect,
             base::BindOnce(
                 &QuicProxyClientSocket::OnBeforeTunnelRequestComplete,
                 weak_factory_.GetWeakPtr())),
@@ -450,6 +470,11 @@ int QuicProxyClientSocket::DoCalculateHeadersComplete(int result) {
     }
   }
   request_.extra_headers.MergeFrom(proxy_delegate_headers_);
+  if (is_udp_tunnel_) {
+    // This protocol header is mandatory and cannot be overridden by user
+    // supplied extra headers.
+    request_.extra_headers.SetHeader("capsule-protocol", "?1");
+  }
   return result;
 }
 
@@ -465,8 +490,14 @@ int QuicProxyClientSocket::DoSendRequest() {
                        request_line, &request_.extra_headers);
 
   quiche::HttpHeaderBlock headers;
-  CreateSpdyHeadersFromHttpRequest(request_, std::nullopt,
-                                   request_.extra_headers, &headers);
+  if (is_udp_tunnel_) {
+    CreateSpdyHeadersFromHttpRequestForExtendedConnect(
+        request_, std::nullopt, "connect-udp", request_.extra_headers,
+        &headers);
+  } else {
+    CreateSpdyHeadersFromHttpRequest(request_, std::nullopt,
+                                     request_.extra_headers, &headers);
+  }
 
   if (preamble_index_.has_value()) {
     return stream_->WriteHeaders(std::move(headers), true, nullptr);
@@ -536,7 +567,10 @@ int QuicProxyClientSocket::DoProcessResponseHeaders() {
       return OK;
     }
     return proxy_delegate_->OnTunnelHeadersReceived(
-        proxy_chain_, proxy_chain_index_, *response_.headers,
+        proxy_chain_, proxy_chain_index_,
+        is_udp_tunnel_ ? ProxyTunnelType::kConnectUdp
+                       : ProxyTunnelType::kConnect,
+        *response_.headers,
         base::BindOnce(&QuicProxyClientSocket::OnIOComplete,
                        weak_factory_.GetWeakPtr()));
   }
@@ -560,17 +594,22 @@ int QuicProxyClientSocket::DoProcessResponseCode() {
     next_state_ = STATE_CONNECT_COMPLETE;
     return OK;
   }
-  switch (response_.headers->response_code()) {
-    case 200:  // OK
-      next_state_ = STATE_CONNECT_COMPLETE;
-      return OK;
+  int response_code = response_.headers->response_code();
+  if ((!is_udp_tunnel_ && response_code == 200) ||
+      (is_udp_tunnel_ && IsSuccessfulConnectUdpResponse(*response_.headers))) {
+    next_state_ = STATE_CONNECT_COMPLETE;
+    return OK;
+  }
 
+  switch (response_code) {
     case 407:  // Proxy Authentication Required
       next_state_ = STATE_CONNECT_COMPLETE;
       SanitizeProxyAuth(response_);
       return HandleProxyAuthChallenge(auth_.get(), &response_, net_log_);
 
     default:
+      DLOG_IF(WARNING, is_udp_tunnel_)
+          << "CONNECT-UDP proxy returned status " << response_code;
       // Ignore response to avoid letting the proxy impersonate the target
       // server.  (See http://crbug.com/137891.)
       return ERR_TUNNEL_CONNECTION_FAILED;

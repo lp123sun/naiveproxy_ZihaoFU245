@@ -231,6 +231,21 @@ test_naive('Custom config file', 'socks5h://127.0.0.1:{PORT1}',
            config_content='"listen":"socks://127.0.0.1:{PORT1}","log":""',
            config_file='custom.json')
 
+test_naive('UDP queue limits config', 'socks5h://127.0.0.1:{PORT1}',
+           'udp-limits.json',
+           config_content='"listen":"socks://127.0.0.1:{PORT1}",'
+                          '"masque-udp":true,'
+                          '"masque-udp-path-template":'
+                          '"/custom/{{target_host}}/{{target_port}}/",'
+                          '"connect-udp-timeout":"65",'
+                          '"udp-max-target-flows":0,'
+                          '"udp-max-queued-datagrams-per-flow":"4096",'
+                          '"udp-max-queued-bytes-per-flow":67108864,'
+                          '"udp-max-queued-sends":8192,'
+                          '"udp-max-queued-send-bytes":0,'
+                          '"log":""',
+           config_file='udp-limits.json')
+
 test_naive('Multiple listens - command line', 'socks5h://127.0.0.1:{PORT1}',
            '--log --listen=socks://:{PORT1} --listen=http://:{PORT2}')
 
