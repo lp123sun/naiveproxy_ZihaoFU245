@@ -1,10 +1,8 @@
 name: Build
 on:
   push:
-    branches: [master]
+    branches: [v150.0.7871.181-1]
     paths-ignore: [README.md]
-  release:
-    types: [published]
 defaults:
   run:
     shell: bash
@@ -118,7 +116,7 @@ jobs:
         arch: [x64, x86, arm64, arm, mipsel, mips64el, riscv64, loong64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+      BUNDLE: naiveproxy-${{ github.ref_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains (Linux, OpenWrt, Android)
@@ -183,12 +181,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            src/${{ env.BUNDLE }}.tar.xz
+            src/sha256sum.txt
   android:
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04
@@ -206,7 +201,7 @@ jobs:
             abi: armeabi-v7a
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}" target_os="android"'
-      BUNDLE: naiveproxy-plugin-${{ github.event.release.tag_name || 'v1.1.1.1-1' }}-${{ matrix.abi }}.apk
+      BUNDLE: naiveproxy-plugin-${{ github.ref_name }}-${{ matrix.abi }}.apk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -268,7 +263,7 @@ jobs:
         working-directory: apk
         env:
           APK_ABI: ${{ matrix.abi }}
-          APK_VERSION_NAME: ${{ github.event.release.tag_name || 'v1.1.1.1-1' }}
+          APK_VERSION_NAME: ${{ github.ref_name }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
         run: |
           mkdir -p app/libs/$APK_ABI
@@ -279,13 +274,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }} sha256 ${{ env.SHA256SUM }}
-          path: apk/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        working-directory: apk/app/build/outputs/apk/release
-        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }} --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            apk/app/build/outputs/apk/release/${{ env.BUNDLE }}
+            apk/sha256sum.txt
   win:
     needs: cache-toolchains-win
     runs-on: windows-2022
@@ -295,7 +286,7 @@ jobs:
         arch: [x64, x86, arm64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+      BUNDLE: naiveproxy-${{ github.ref_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains
@@ -344,12 +335,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }}.zip naive executable sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        run: gh release upload "${GITHUB_REF##*/}"  ${{ env.BUNDLE }}.zip --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            src/${{ env.BUNDLE }}.zip
+            src/sha256sum.txt
   mac-x64:
     needs: cache-toolchains-mac-x64
     runs-on: macos-15-intel
@@ -359,7 +347,7 @@ jobs:
         arch: [x64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+      BUNDLE: naiveproxy-${{ github.ref_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains and PGO
@@ -395,12 +383,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            src/${{ env.BUNDLE }}.tar.xz
+            src/sha256sum.txt
   mac-arm64:
     needs: cache-toolchains-mac-arm64
     runs-on: macos-15
@@ -410,7 +395,7 @@ jobs:
         arch: [arm64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+      BUNDLE: naiveproxy-${{ github.ref_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains and PGO
@@ -446,12 +431,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            src/${{ env.BUNDLE }}.tar.xz
+            src/sha256sum.txt
   openwrt:
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04
@@ -595,7 +577,7 @@ jobs:
     env:
       EXTRA_FLAGS: target_cpu="${{ matrix.target_cpu }}" target_os="openwrt" ${{ matrix.extra }}
       OPENWRT_FLAGS: arch=${{ matrix.arch }} release=${{ matrix.openwrt_release || '18.06.0' }} gcc_ver=${{ matrix.openwrt_gcc_ver || '7.3.0' }} ${{ matrix.openwrt }}
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+      BUNDLE: naiveproxy-${{ github.ref_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains (Linux, OpenWrt, Android)
@@ -652,9 +634,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
-      - name: Upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
-        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            src/${{ env.BUNDLE }}.tar.xz
+            src/sha256sum.txt
