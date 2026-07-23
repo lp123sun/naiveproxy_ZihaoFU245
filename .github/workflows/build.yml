@@ -287,13 +287,13 @@ jobs:
             
             # 【核心步骤】：将 Secrets 中的 Base64 文本解码并还原为真实的 release.keystore 文件
             # 将还原的文件直接强制覆盖到 Android 工程的 app 目录下，无视上游的废弃密钥
-            echo "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
+            echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
             
             ./gradlew :app:assembleRelease
             APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
             
             # 编译完成后，为了安全，立刻粉碎并删除还原出来的密钥文件（用完即焚）
-            shred -u app/release.keystore 2>/dev/null || rm -f app/release.keystore
+            shred -u release.keystore 2>/dev/null || rm -f release.keystore
           else
             echo "No KEYSTORE configuration found. Falling back to Debug APK..."
             ./gradlew :app:assembleDebug
